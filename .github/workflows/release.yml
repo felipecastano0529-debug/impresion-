@@ -1,0 +1,57 @@
+# Build automático del plugin en tag printer-v*
+#
+# Disparador: push de un tag con prefijo `printer-v` (ej. `printer-v0.4.0`).
+# Builda en paralelo macos-latest (arm64 .dmg) y windows-latest (x64 .exe), y
+# publica los binarios al release del mismo tag en este repo.
+#
+# Para que la publicación funcione, el GITHUB_TOKEN del job tiene permisos
+# de escritura sobre releases (`contents: write` abajo).
+
+name: Release plugin
+
+on:
+  push:
+    tags:
+      - "printer-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: build:mac
+            artifact: "Pida-Pues-Printer-arm64.dmg"
+          - os: windows-latest
+            target: build:win
+            artifact: "Pida-Pues-Printer-x64.exe"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: source/v0.4.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run ${{ matrix.target }}
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/${{ matrix.artifact }}
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

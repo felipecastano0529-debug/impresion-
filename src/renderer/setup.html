@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pida Pues Printer — Configuración</title>
+  <style>
+    :root {
+      --bg: #0a0f1f; --surface: #111827; --border: #1f2937;
+      --text: #e5e7eb; --muted: #9ca3af; --primary: #1d4ed8; --success: #10b981; --error: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg); color: var(--text); padding: 24px;
+    }
+    h1 { margin: 0 0 4px 0; font-size: 18px; font-weight: 700; }
+    h1 + p { margin: 0 0 20px 0; color: var(--muted); font-size: 12px; }
+    .status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+      padding: 4px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); margin-bottom: 16px; }
+    .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+    .status.connected .dot { background: var(--success); }
+    .status.error .dot { background: var(--error); }
+    fieldset { border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin: 0 0 14px 0; background: var(--surface); }
+    legend { padding: 0 6px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+    label { display: block; font-size: 11px; color: var(--muted); margin: 8px 0 4px 0; }
+    input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--bg); color: var(--text); font-size: 13px; font-family: inherit; }
+    input:focus { outline: none; border-color: var(--primary); }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    button { padding: 10px 16px; border-radius: 8px; border: 0; cursor: pointer; font-weight: 600; font-size: 13px; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--surface); }
+    .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+    .toast { position: fixed; bottom: 16px; right: 16px; padding: 10px 14px;
+      border-radius: 8px; background: var(--surface); border: 1px solid var(--border); font-size: 12px;
+      transform: translateY(80px); opacity: 0; transition: all .3s; }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.success { border-color: var(--success); }
+    .toast.error { border-color: var(--error); }
+  </style>
+</head>
+<body>
+  <h1>Pida Pues Printer</h1>
+  <p>Plugin de impresión v0.4.0 — escucha la cola de pedidos y los manda a la térmica.</p>
+  <div id="status" class="status"><span class="dot"></span><span id="statusText">Cargando…</span></div>
+
+  <fieldset>
+    <legend>Conexión a Supabase</legend>
+    <label>Project URL</label>
+    <input id="supabase_url" placeholder="https://xxxxxxx.supabase.co" />
+    <label>Anon (publishable) key</label>
+    <input id="supabase_anon_key" placeholder="eyJ..." />
+    <p class="hint">Estas se sacan de Supabase Studio → Settings → API.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Restaurante / Sede</legend>
+    <label>Tenant ID (UUID)</label>
+    <input id="tenant_id" placeholder="00000000-0000-0000-0000-000000000000" />
+    <label>Branch ID (opcional, deja vacío para todas las sedes del tenant)</label>
+    <input id="branch_id" placeholder="00000000-0000-0000-0000-000000000000" />
+  </fieldset>
+
+  <fieldset>
+    <legend>Impresora térmica</legend>
+    <label>Nombre de la impresora del sistema</label>
+    <input id="printer_interface" placeholder="ej: printer:EPSON TM-T20III" />
+    <p class="hint">Usá el formato <code>printer:NombreExacto</code> según aparece en Configuración → Impresoras del sistema. Si lo dejás vacío, usa la predeterminada.</p>
+    <div class="row" style="margin-top: 10px;">
+      <button class="btn-ghost" id="testBtn">Imprimir test</button>
+    </div>
+  </fieldset>
+
+  <div class="actions">
+    <button class="btn-ghost" onclick="window.close()">Cerrar</button>
+    <button class="btn-primary" id="saveBtn">Guardar y reconectar</button>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const fields = ["supabase_url", "supabase_anon_key", "tenant_id", "branch_id", "printer_interface"];
+
+    function setStatus(s) {
+      const el = $("status");
+      el.classList.remove("connected", "error");
+      if (s === "connected") el.classList.add("connected");
+      else if (s === "error") el.classList.add("error");
+      $("statusText").textContent =
+        s === "connected" ? "Conectado a Supabase"
+          : s === "error" ? "Error de conexión — revisá las credenciales"
+            : "Desconectado";
+    }
+
+    function toast(msg, kind) {
+      const el = $("toast");
+      el.textContent = msg;
+      el.className = "toast show " + (kind || "");
+      setTimeout(() => { el.className = "toast"; }, 2400);
+    }
+
+    (async () => {
+      const cfg = await window.api.getConfig();
+      for (const f of fields) $(f).value = cfg[f] || "";
+      setStatus(cfg.status);
+    })();
+
+    window.api.onStatus(setStatus);
+
+    $("saveBtn").addEventListener("click", async () => {
+      const cfg = {};
+      for (const f of fields) cfg[f] = $(f).value.trim();
+      cfg.printer_type = "epson"; // default
+      const r = await window.api.saveConfig(cfg);
+      r.ok ? toast("Guardado. Reconectando…", "success") : toast("Error al guardar", "error");
+    });
+
+    $("testBtn").addEventListener("click", async () => {
+      const r = await window.api.printTest();
+      r.ok ? toast("Test enviado a la impresora", "success") : toast("Error: " + r.error, "error");
+    });
+  </script>
+</body>
+</html>

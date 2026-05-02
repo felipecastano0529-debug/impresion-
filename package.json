@@ -1,0 +1,68 @@
+{
+  "name": "pidapues-printer",
+  "version": "0.4.0",
+  "description": "Plugin de impresión Pida Pues — escucha la cola print_jobs en Supabase y manda los tickets a la térmica con el nuevo formato POS.",
+  "main": "src/main.js",
+  "author": "Pida Pues <noreply@pidapues.com>",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build:mac": "electron-builder --mac --arm64",
+    "build:win": "electron-builder --win --x64",
+    "build": "electron-builder -mw"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "electron-store": "^8.2.0",
+    "node-thermal-printer": "^4.4.4",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.pidapues.printer",
+    "productName": "Pida Pues Printer",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.business",
+      "icon": "assets/icon.icns",
+      "artifactName": "Pida-Pues-Printer-${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "artifactName": "Pida-Pues-Printer-${arch}.${ext}"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "felipecastano0529-debug",
+      "repo": "impresion-"
+    }
+  }
+}
