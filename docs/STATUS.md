@@ -2,114 +2,95 @@
 
 Última actualización: 2026-05-02 (sesión Claude Opus 4.7)
 
-## ✅ Lo que está hecho y publicado
+## ✅ Todo en producción
 
-### Plugin v0.4.0
-- Source: `source/v0.4.0` en este repo, pusheado a GitHub.
-- Build: GitHub Actions corrió mac+win exitoso.
-- Release: `printer-v0.4.0` Latest, con `Pida-Pues-Printer-arm64.dmg`
-  (105 MB) y `Pida-Pues-Printer-x64.exe` publicados.
-- Workflow `.github/workflows/release.yml` configurado para auto-build en
-  cualquier `printer-v*` tag futuro.
+### Backend (`build-stellar-platform`)
+- 5 Fases de online conversion priorities + invoicing del otro agente
+  commiteadas, pusheadas a `main` y **deployadas en Vercel**.
+  Último deploy: `Ready Production` (commit `4ffd4cd`).
+- 11 migraciones SQL **aplicadas a Supabase producción**
+  (`wjjnxhmsbqbbgdontwxi`):
+  - `place_order` RPC con recálculo server-side (Fase 0)
+  - Invoicing schema + RPCs (3 migraciones del otro agente)
+  - Nequi en enum `payment_method` (Fase 2)
+  - Pixel IDs en `tenants` (Fase 3)
+  - `get_order_for_tracking` extendido con pixel IDs (Fase 3 fix)
+  - 'scheduled' en `order_status` (Fase 5)
+  - `place_order` extendido con `_scheduled_for` (Fase 5)
+  - Worker pg_cron `activate-scheduled-orders` corriendo cada minuto (Fase 5)
+  - `cancel_order_by_customer` acepta scheduled (Fase 5)
 
-### Proyecto principal (`build-stellar-platform`)
-- 5 fases de **online conversion priorities** mergeadas a `main` y pusheadas:
-  - Fase 0: RPC `place_order` (78df73f)
-  - Fase 1: OG meta dinámico para crawlers (8b3240f)
-  - Fase 2: Nequi via Bold (bcd57be)
-  - Fase 3: Pixels Meta/GA4/TikTok + fix tracking (9c8664c, bd11ead)
-  - Fase 4: Live tracking courier (03a63a6)
-  - Fase 5: Pedidos programados (e37c873)
-  - Fase 5 fix: Sección "Programados" en OrdersBoard (04dca1c)
-- Vercel: deploy automático disparado al push (no verificado en vivo
-  porque el sandbox bloqueó `vercel ls`).
+### Plugin (`impresion-`)
+- **v0.5.0 publicado** — release `printer-v0.5.0` con 2 binarios:
+  - ✅ `Pida-Pues-Printer-arm64.dmg` (Mac Apple Silicon)
+  - ✅ `Pida-Pues-Printer-x64.exe` (Windows)
+  - ⏳ `Pida-Pues-Printer-x64.dmg` (Mac Intel) — buildeando lento, se sube
+    automático cuando termine el job en GitHub Actions
+- Source vive en el **repo principal** en `electron-app/` (no en este repo).
+  Este repo (`impresion-`) sigue siendo solo de distribución de binarios.
+- Workflow que builda + publica está en
+  `build-stellar-platform/.github/workflows/release-printer.yml` y se dispara
+  manual desde Actions con `workflow_dispatch`.
 
 ## ⚠️ Pendiente — necesita acción del usuario
 
-### 1. Aplicar migraciones SQL a Supabase producción
-**Crítico** — están commiteadas en el repo pero NO han corrido contra la DB.
-Lista de migraciones nuevas (orden de aplicación):
+### 1. Test piloto del plugin v0.5.0 en hardware real
+Los binarios están publicados pero nadie los descargó, instaló y probó imprimir
+contra una térmica de un restaurante real. Recomendación:
+1. Bajar `Pida-Pues-Printer-arm64.dmg` (o `.exe`) del release
+   `printer-v0.5.0` en una caja de un restaurante piloto.
+2. Configurar (login con email del owner, seleccionar sede e impresora).
+3. Tocar "Imprimir ticket de prueba".
+4. Hacer un pedido real desde `/r/<slug>` y verificar que sale el formato
+   nuevo en la térmica (logo de la sede, header, copia cocina + cliente,
+   QR si está configurado).
 
-```
-supabase/migrations/20260502160000_create_place_order_rpc.sql
-supabase/migrations/20260502170100_create_invoices.sql       (del usuario)
-supabase/migrations/20260502170200_invoice_consecutive_audit.sql (del usuario)
-supabase/migrations/20260502170300_invoice_rpcs.sql          (del usuario)
-supabase/migrations/20260502180000_add_nequi_payment_method.sql
-supabase/migrations/20260502190000_add_tenant_pixels.sql
-supabase/migrations/20260502190100_extend_get_order_tracking_pixels.sql
-supabase/migrations/20260502200000_scheduled_orders_enum.sql
-supabase/migrations/20260502200100_scheduled_orders_validation.sql
-supabase/migrations/20260502200200_scheduled_activator_cron.sql
-supabase/migrations/20260502200300_extend_cancel_for_scheduled.sql
-```
+### 2. Para que el QR salga en los tickets
+Configurar en /admin → InvoiceSettings:
+- `legal_name` (razón social)
+- `tax_id` (NIT, si aplica)
+- `invoice_header_message` (multilínea, dirección + contacto)
+- `invoice_footer_message` (multilínea, mensaje de despedida)
+- `invoice_qr_text` (URL o texto que codifica el QR)
+- Subir logo en `branches.logo_url` o `tenants.logo_url`
 
-Aplicarlas:
+Sin esto el ticket sale igual pero sin esos datos.
+
+### 3. Code signing del plugin (largo plazo)
+- macOS: certificado de Apple Developer ($99/año) + notarización
+- Windows: certificado EV o standard
+Sin esto, primera apertura muestra advertencia (manejable con click derecho
+→ Abrir en Mac, "Más información → Ejecutar igual" en Win).
+
+### 4. Tests SQL Fase 0 (opcional)
+Los tests negativos de `place_order` están en
+`build-stellar-platform/supabase/tests/place_order_negatives.sql`.
+Para correrlos contra prod:
 ```bash
-cd build-stellar-platform/
-supabase db push
+psql "$SUPABASE_DB_URL" -f supabase/tests/place_order_negatives.sql
 ```
-
-Sin esto:
-- El RPC `place_order` no existe → CheckoutModal con flag on falla.
-- Pixels no se pueden configurar (campos en `tenants` no existen).
-- Pedidos programados no funcionan (enum sin 'scheduled', RPC no existe, cron no programado).
-- Live courier tracking devuelve 404 siempre (`get_order_for_tracking` viejo no expone pixels).
-
-### 2. Tests SQL no ejecutados
-Los tests negativos de `place_order` están escritos pero no corridos:
-```bash
-psql "$SUPABASE_DB_URL" -f build-stellar-platform/supabase/tests/place_order_negatives.sql
-```
-
-### 3. Íconos del plugin
-Faltan `assets/tray.png`, `assets/icon.icns`, `assets/icon.ico`. Hay un README
-en `assets/` con instrucciones para generarlos desde un PNG cuadrado de 1024×1024.
-
-### 4. Code signing del plugin
-- macOS: certificado de Apple Developer ($99/año) + notarización.
-- Windows: certificado EV o standard.
-- Sin esto, primera apertura muestra advertencia de seguridad (manejable
-  con click derecho → Abrir en Mac, "Más información → Ejecutar igual" en Win).
-
-### 5. Test piloto del plugin v0.4.0 en una sede real
-Antes de distribuirlo a todas las sedes:
-1. Bajar `Pida-Pues-Printer-arm64.dmg` o `.exe` de la release.
-2. Instalar en una caja de un restaurante piloto.
-3. Configurar (Supabase URL, anon key, tenant_id, branch_id, impresora).
-4. Tocar "Imprimir test" — verificar que sale el formato nuevo bien.
-5. Hacer un pedido real desde `/r/<slug>` y verificar que se imprime al
-   confirmar el pedido en `/app`.
-
-### 6. Compatibilidad con v3 (a confirmar con usuario)
-El v0.4.0 fue **reconstruido desde cero** porque el source del v0.3.0 nunca
-estuvo en GitHub. La estructura imita lo que las release notes del v3
-mencionaron ("polling backup + cola + indicador tray"). Si querés alinear
-exacto al código del v3:
-1. Descargar el .dmg del v3.
-2. Extraer con `hdiutil attach` + `npx asar extract`.
-3. Comparar y portar lo que falte.
-
-Comandos detallados en la conversación que llevó a esta sesión.
-
-## 🔍 Archivos clave para retomar
-
-| Archivo | Qué hace |
-|---|---|
-| `src/main.js` | Loop principal del plugin |
-| `src/renderer/template.js` | Render del formato POS |
-| `src/renderer/setup.html` | UI de configuración |
-| `package.json` (sección "build") | Config de electron-builder |
-| `.github/workflows/release.yml` | Auto-build mac+win |
-| `docs/BUILD.md` | Cómo compilar localmente |
-| `docs/DEPLOYMENT.md` | Cómo publicar releases |
-| `docs/STATUS.md` | Este archivo |
+No son críticos porque la migración ya está aplicada y funcionando, pero
+sirven para confirmar las protecciones (precio manipulado, cross-tenant,
+agotado, etc.).
 
 ## 🔗 URLs importantes
 
-- Source: https://github.com/felipecastano0529-debug/impresion-/tree/source/v0.4.0
-- Release latest: https://github.com/felipecastano0529-debug/impresion-/releases/latest
-- Workflows: https://github.com/felipecastano0529-debug/impresion-/actions
-- Proyecto principal: https://github.com/felipecastano0529-debug/build-stellar-platform
-- Supabase project: `wjjnxhmsbqbbgdontwxi` (ver `build-stellar-platform/supabase/config.toml`)
-- Producción: https://www.pidapues.com
+| Cosa | URL |
+|---|---|
+| Source plugin | `build-stellar-platform/electron-app/` (repo principal) |
+| Releases plugin | https://github.com/felipecastano0529-debug/impresion-/releases |
+| Latest plugin | https://github.com/felipecastano0529-debug/impresion-/releases/latest |
+| Workflow | https://github.com/felipecastano0529-debug/build-stellar-platform/actions/workflows/release-printer.yml |
+| Producción | https://www.pidapues.com |
+| Vercel project | felipes-projects-3bd9a2f6/build-stellar-platform |
+| Supabase project | `wjjnxhmsbqbbgdontwxi` |
+
+## 📁 Archivos clave del plugin
+
+| Archivo | Qué hace |
+|---|---|
+| `electron-app/src/main/main.ts` | Loop principal: tray, Supabase, processJob, render del nuevo formato POS |
+| `electron-app/src/main/preload.ts` | IPC bridge para la setup window |
+| `electron-app/src/renderer/App.tsx` | UI de configuración (login, settings) |
+| `electron-app/package.json` | deps + electron-builder config |
+| `.github/workflows/release-printer.yml` | Auto-build y publish (en repo principal) |
